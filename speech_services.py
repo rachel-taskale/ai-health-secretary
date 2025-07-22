@@ -12,32 +12,32 @@ import config
 
 from config import config
 import websockets
-from call_flow_state import get_next_prompt
+from helpers import data_extraction, get_next_prompt, handle_appointment_scheduling
 from file_storage import append_patient_record
-from validators import validate_dob, validate_email, validate_insurance_id, validate_regex
+from validators import validate_full_address
 
 # Configure clients
 openai.api_key =config.openai.api_key
 aai.settings.api_key = config.assemblyai.api_key
 transcriber = aai.Transcriber()
 
-
-
 AUDIO_OUTPUT_DIR = "./audio_output"
 
 
+# Use assembly AI to transcribe the audio
 def transcribe_audio(audio_path: str) -> str:
     print(f"audio path: {audio_path}")
     transcript = transcriber.transcribe(audio_path)
-    return transcript
+    transcript_text = transcript.text
+    return transcript_text
 
 async def stream_audio_to_assemblyai(audio_generator, on_transcript):
     """
     Streams audio to AssemblyAI and calls `on_transcript` callback with final transcripts.
     """
-    uri = "wss://api.assemblyai.com/v2/realtime/ws?sample_rate=8000"
+    uri = "wss://api.assemblyai.com/v2/realtime/ws?sample_rate=16000"
     async with websockets.connect(uri,
-        extra_headers={"Authorization": AssemblyAIConfig},
+        extra_headers={"Authorization": config.assemblyai.api_key},
         ping_interval=5,
         ping_timeout=20) as ws:
 
@@ -49,34 +49,16 @@ async def stream_audio_to_assemblyai(audio_generator, on_transcript):
         async def receive_transcripts():
             async for msg in ws:
                 data = json.loads(msg)
+                print(f"data: {data}")
                 if data.get("message_type") == "FinalTranscript":
                     text = data.get("text", "").strip()
                     if text:
                         await on_transcript(text)
 
-        await asyncio.gather(send_audio(), receive_transcripts())
+        return await asyncio.gather(send_audio(), receive_transcripts())
 
 
-# # use OpenAI to generate a voice to stream back to the user with our pre-written response
-# def synthesize_speech(text: str, voice: str = "echo", audio_path: str = AUDIO_OUTPUT_DIR ) -> str:
-#     response = openai.audio.speech.create(
-#         model="tts-1",
-#         voice=voice,
-#         input=text,
-#     )
-
-#     if not os.path.exists(AUDIO_OUTPUT_DIR):
-#         os.makedirs(AUDIO_OUTPUT_DIR)
-
-#     filename = f"{uuid.uuid4()}.mp3"
-#     file_path = os.path.join(AUDIO_OUTPUT_DIR, filename)
-#     with open(file_path, "wb") as f:
-#         f.write(response.content)
-
-#     return filename 
-
-
-def synthesize_speech(text: str, voice: str = "echo", output_dir: str = AUDIO_OUTPUT_DIR) -> str:
+def synthesize_speech(text: str, voice: str = "nova", output_dir: str = AUDIO_OUTPUT_DIR) -> str:
     response = openai.audio.speech.create(
         model="tts-1",
         voice=voice,
@@ -92,41 +74,36 @@ def synthesize_speech(text: str, voice: str = "echo", output_dir: str = AUDIO_OU
     with open(file_path, "wb") as f:
         f.write(response.content)
 
-    return file_path  # ✅ full path
+    return file_path
 
 
-def invalid_speech_output(current_state):
-    match current_state:
-        case "email":
-            return synthesize_speech("That didn't sound like a valid email. Please try again.")
-        case "dob":
-            return synthesize_speech("That doesn't seem like a valid birthdate. Say it like 1990 dash 12 dash 01.")
-        case "insurance":
-            return synthesize_speech("That doesn't seem like a valid birthdate. Say it like 1990 dash 12 dash 01.")
-
-def next_prompt(current_state):
-    match current_state:
-        case "email":
-            return "dob"
-        case "dob":
-            return "insurance"
-        case "insurance":
-            return "done"
 
 # Function to handle all of our cases for receiving data from the user
 async def on_transcript(text, session_state):
     current_state = session_state["state"]
-    if current_state != "done":
-            valid, error = validate_regex(text, current_state)
-            if not valid:
-                print(f"an error occured: {error}")
-                retry_audio = synthesize_speech(invalid_speech_output(current_state))
-                return {"retry": True, "audio_path": retry_audio}
-            
-            session_state[current_state] = text
-            session_state["state"] = next_prompt(current_state)
-    else:
-        print(f"current state: {current_state}")
+    # Ternary function handle all the
+    # send the data to the openai and extract the data from it
+    if current_state == "address": 
+        data, valid, error = validate_full_address(text)
+    elif current_state == "schedule_appointment":
+        data, valid, error = handle_appointment_scheduling(text)
+    else: 
+        data, valid, error = data_extraction(text, current_state)
+    if not valid or not data:
+        print(f"an error occured: {error}")
+        retry_audio = synthesize_speech(error)
+        return {"retry": True, "audio_path": retry_audio}
+        
+    # For now we arent going to confirm with the user, just do extraction & store
+    session_state[current_state] = data
+    session_state["state"] = next_prompt(current_state)
+
+    # Otherwise, prompt the user for the next input
+    next_prompt = get_next_prompt(session_state["state"])
+    next_audio = synthesize_speech(next_prompt)
+    # if we reach the end then we should save all the information
+    if next_prompt == 'done':
+        print(f"current state: {session_state}")
         session_data = {
                     "phone": session_state["phone"],
                     "email": session_state["email"],
@@ -134,16 +111,11 @@ async def on_transcript(text, session_state):
                     "insurance": session_state["insurance"],
                     "timestamp": int(time.time()),
                 }
+        # Save it to our text file
         append_patient_record(session_data)
-        final_audio = synthesize_speech("Thanks. Your appointment has been submitted. Please check your email for the appointment confirmation. Goodbye.")
-        return {"retry": False, "audio_path": final_audio}
-    
-     # Otherwise, prompt the user for the next input
-    next_prompt = get_next_prompt(session_state["state"])
-    next_audio = synthesize_speech(next_prompt)
     return {"retry": False, "audio_path": next_audio}
-   
 
+   
 
 async def audio_generator(audio_queue):
     while True:

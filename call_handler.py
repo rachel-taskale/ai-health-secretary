@@ -26,7 +26,7 @@ def setup_routes(app, sock):
                     sid = data["start"]["callSid"]
                     print(f"[{sid}] Call started")
                     CALL_SESSIONS[sid] = {
-                        "state": "email",
+                        "state": "insurance_payer",
                         "phone": data["start"]["from"], 
                     }
                     asyncio.create_task(stream_audio_to_assemblyai(audio_generator(),lambda text: on_transcript(text, CALL_SESSIONS[sid])))

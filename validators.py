@@ -1,42 +1,126 @@
+import os
 import re
+
+import requests
+import openai
 
 PHONE_REGEX = re.compile(r"^\+1\d{10}$")  # e.g., +14155552671
 DOB_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")  # YYYY-MM-DD
 INSURANCE_REGEX = re.compile(r"^[A-Z0-9]{5,15}$", re.IGNORECASE)
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-def validate_phone(phone: str):
-    if not PHONE_REGEX.match(phone):
-        return False, "Invalid phone format. Use +1XXXXXXXXXX"
-    return True, ""
-
-def validate_dob(dob: str):
-    if not DOB_REGEX.match(dob):
-        return False, "Invalid date of birth format. Use YYYY-MM-DD"
-    return True, ""
-
-def validate_insurance_id(insurance_id: str):
-    if not INSURANCE_REGEX.match(insurance_id):
-        return False, "Insurance ID must be 5-15 alphanumeric characters"
-    return True, ""
-
-def validate_email(email: str):
-    if not EMAIL_REGEX.match(email):
-        return False, "Invalid email format"
-    return True, ""
 
 def validate_regex(text: str, type: str):
+    found = ""
     match type:
         case "phone":
-            if not PHONE_REGEX.match(text):
-                return False, "Invalid phone format. Use +1XXXXXXXXXX"
+            found = re.search(PHONE_REGEX, text)
+            if not found or found is "":
+                return "", False, "Invalid phone format. Use XXXXXXXXXX"
         case "email":
-            if not EMAIL_REGEX.match(text):
-                return False, "Invalid email format"
+            found = re.search(EMAIL_REGEX, text)
+            if not found or found is "":
+                return "", False, "Invalid email format"
         case "insurance":
-            if not INSURANCE_REGEX.match(text):
-                return False, "Insurance ID must be 5-15 alphanumeric characters"
+            found = re.search(INSURANCE_REGEX, text)
+            if not found or found is "":
+                return "", False, "Insurance ID must be 5-15 alphanumeric characters"
         case "dob":
-            if not DOB_REGEX.match(text):
-                return False, "Invalid date of birth format. Use YYYY-MM-DD"
-    return True, ""
+            found = re.search(DOB_REGEX, text)
+            if not found or found is "":
+                return "", False, "Invalid date of birth format. Use YYYY-MM-DD"
+            
+    print(f"found: {found}")
+    return found, True, ""
+
+
+# Function to extract the address into json format
+def extract_and_check_address_with_openai(raw_input: str) -> dict:
+    prompt = f"""
+    You're an address parser. Extract a structured US mailing address from this input:
+
+    "{raw_input}"
+
+    Respond in JSON like:
+    {{
+    "street": "123 Main St",
+    "city": "San Francisco",
+    "state": "CA",
+    "zip": "94105",
+    "status": "VALID",  # or "INCOMPLETE" or "INVALID"
+    "missingFields": ["street", "city"]  # only if status is INCOMPLETE
+    }}
+
+    Only respond with valid JSON.
+    """
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    json_text = response.choices[0].message.content.strip()
+    return eval(json_text) 
+
+ 
+
+# Function to take extracted address and validate with external api to check that address actually exists
+def validate_address_with_smarty(street, city, state, zip_code=None):
+    auth_id = os.getenv("SMARTY_AUTH_ID")
+    auth_token = os.getenv("SMARTY_AUTH_TOKEN")
+
+    params = {
+        "street": street,
+        "city": city,
+        "state": state,
+        "auth-id": auth_id,
+        "auth-token": auth_token,
+    }
+
+    if zip_code:
+        params["zipcode"] = zip_code
+
+    response = requests.get("https://us-street.api.smartystreets.com/street-address", params=params)
+    data = response.json()
+
+    if response.status_code == 200 and len(data) > 0:
+        return True, data[0] 
+    else:
+        return False, None
+
+
+
+def validate_full_address(raw_input):
+    result = extract_and_check_address_with_openai(raw_input)
+
+    if result.get("status") != "VALID":
+        missing_fields = ", ".join(str(f) for f in result.get("missingFields", []))
+        return None, False, f"Address is incomplete, please repeat address with {missing_fields}"
+
+    is_valid, details = validate_address_with_smarty(
+        result["street"], result["city"], result["state"], result.get("zip")
+    )
+    if not is_valid:
+        return None, False, "Address not found, please enter a valid address"
+    ans = {
+        "street": result["street"],
+        "city": result["city"],
+        "state": result["state"],
+        "zip": result["zip"]
+    }
+    return ans, True, details
+
+
+
+
+def validate_appointment_time(data: dict):
+    # get the date from the start and end times:
+
+
+    # find in the appointment schedule for that doctor
+
+    # If there are no appointments between the start and end of those times then return true
+
+
+    # else return false
+    return true
