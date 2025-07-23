@@ -4,6 +4,8 @@ import re
 import requests
 import openai
 
+from file_storage import get_doctors_appointments_by_day_and_doctor
+
 PHONE_REGEX = re.compile(r"^\+1\d{10}$")  # e.g., +14155552671
 DOB_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")  # YYYY-MM-DD
 INSURANCE_REGEX = re.compile(r"^[A-Z0-9]{5,15}$", re.IGNORECASE)
@@ -15,19 +17,19 @@ def validate_regex(text: str, type: str):
     match type:
         case "phone":
             found = re.search(PHONE_REGEX, text)
-            if not found or found is "":
+            if not found or found == "":
                 return "", False, "Invalid phone format. Use XXXXXXXXXX"
         case "email":
             found = re.search(EMAIL_REGEX, text)
-            if not found or found is "":
+            if not found or found == "":
                 return "", False, "Invalid email format"
         case "insurance":
             found = re.search(INSURANCE_REGEX, text)
-            if not found or found is "":
+            if not found or found == "":
                 return "", False, "Insurance ID must be 5-15 alphanumeric characters"
         case "dob":
             found = re.search(DOB_REGEX, text)
-            if not found or found is "":
+            if not found or found == "":
                 return "", False, "Invalid date of birth format. Use YYYY-MM-DD"
             
     print(f"found: {found}")
@@ -115,12 +117,12 @@ def validate_full_address(raw_input):
 
 def validate_appointment_time(data: dict):
     # get the date from the start and end times:
-
-
-    # find in the appointment schedule for that doctor
-
-    # If there are no appointments between the start and end of those times then return true
-
-
-    # else return false
-    return true
+    appointments_on_date = get_doctors_appointments_by_day_and_doctor(data)
+    for i in appointments_on_date:
+            start_time_in_between = i["start_date"] <=  input["start"] and i["start_date"] >=  input["end"]
+            end_time_in_between = i["end_date"] <=  input["start"] and i["end_date"] >=  input["end"]
+            exsiting_time_booked = i["start_date"] >=   input["start"] and i["end_date"] <=  input["end"]
+            if start_time_in_between or end_time_in_between or exsiting_time_booked :
+                return False
+    return True
+    

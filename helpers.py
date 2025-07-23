@@ -1,8 +1,14 @@
 import json
+import os
+import uuid
 import openai
 from file_storage import get_doctors_appointments
-from speech_services import synthesize_speech
-from validators import validate_appointment_time
+from validators import validate_appointment_time, validate_regex
+
+AUDIO_OUTPUT_DIR = "./audio_output"
+
+
+
 
 def get_next_prompt(state):
     appointments_natural_language = ""
@@ -15,6 +21,7 @@ def get_next_prompt(state):
     prompts = {
         "insurance_payer": "Please provide the member name on your insurance card",
         "insurance": "Please provide your insurance ID.",
+        "address": "Please provide your address in the format: street address, city, state, and zip code.",
         "topic_of_call": "Why are you scheduling an appointment today?",
         "phone": "What is your phone number?",
         "email": "What is your email address?",
@@ -22,6 +29,22 @@ def get_next_prompt(state):
         "done": "Thanks. Your appointment has been scheduled. Please check your email for the appointment confirmation. Goodbye."
     }
     return prompts.get(state, None)
+
+def openAIPrompts(type):
+    match type:
+        case "insurance_payer":
+            return "Extract the first and last name of the caller from the transcript"
+        case "insurance":
+            return "Extract the insurance id fom the transcript"
+        case "topic_of_call":
+            return "Extract the main topic of scheduling an appointment with the doctor from the transcript"
+        case "phone":
+            return "Extract the phone number in XXXXXXXXXX format from the transcript" 
+        case "email":
+            return "Extract the email address from the transcript"
+    return None
+        
+
 
 
 def convert_appointments_to_natural_language(raw_input: str) -> dict:
@@ -45,7 +68,9 @@ def convert_appointments_to_natural_language(raw_input: str) -> dict:
 
 
 
+# Main openai prompt 
 def data_extraction (text: str, type: str):
+    prompt =  openAIPrompts(type)
     response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[
@@ -55,7 +80,7 @@ def data_extraction (text: str, type: str):
             },
             {
                 "role": "user",
-                "content": f"Transcript: {text}\n\n Return the user's name, date of birth, and reason for calling as JSON."
+                "content": f"{prompt}\n\nTranscript: {text}\n\n"
             }
         ]
     )
@@ -117,3 +142,23 @@ def handle_appointment_scheduling(text):
         return None, False, f"Failed to parse response: {e}"
     except Exception as e:
         return None, False, f"OpenAI error: {e}"
+    
+
+def synthesize_speech(text: str, voice: str = "nova", output_dir: str = AUDIO_OUTPUT_DIR) -> str:
+    response = openai.audio.speech.create(
+        model="tts-1",
+        voice=voice,
+        input=text,
+    )
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    filename = f"{uuid.uuid4()}.mp3"
+    file_path = os.path.join(output_dir, filename)
+
+    with open(file_path, "wb") as f:
+        f.write(response.content)
+
+    return file_path
+

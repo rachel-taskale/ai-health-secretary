@@ -1,6 +1,9 @@
 import logging
+import threading
+from app import app
 from typing import Type
 from config import config
+
 import assemblyai as aai
 from assemblyai.streaming.v3 import (
     BeginEvent,
@@ -15,10 +18,12 @@ from assemblyai.streaming.v3 import (
 )
 
 
+# --- Logging ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# --- AssemblyAI Callbacks ---
 def on_begin(self: Type[StreamingClient], event: BeginEvent):
     print(f"Session started: {event.id}")
 
@@ -30,7 +35,6 @@ def on_turn(self: Type[StreamingClient], event: TurnEvent):
         params = StreamingSessionParameters(
             format_turns=True,
         )
-
         self.set_params(params)
 
 
@@ -44,10 +48,11 @@ def on_error(self: Type[StreamingClient], error: StreamingError):
     print(f"Error occurred: {error}")
 
 
-def main():
+# --- AssemblyAI Stream Runner ---
+def run_streaming_agent():
     client = StreamingClient(
         StreamingClientOptions(
-            api_key=config.assemblyai,
+            api_key=config.assemblyai.api_key,
             api_host="streaming.assemblyai.com",
         )
     )
@@ -66,11 +71,21 @@ def main():
 
     try:
         client.stream(
-          aai.extras.MicrophoneStream(sample_rate=16000)
+            aai.extras.MicrophoneStream(sample_rate=16000)
         )
     finally:
         client.disconnect(terminate=True)
 
 
+# --- Flask Runner ---
+
+
+# --- Main Entry ---
 if __name__ == "__main__":
-    main()
+    agent_thread = threading.Thread(target=run_streaming_agent)
+    agent_thread.start()
+
+    app.run(debug=True, port=5002)
+
+
+    run_streaming_agent()

@@ -77,6 +77,12 @@ def get_doctors_appointments():
     print(f"all_doctors_appointments: {all_doctors_appointments}")
     return all_doctors_appointments
 
+def get_doctors_appointments_by_day_and_doctor(input:dict):
+    filename = f"./data/schedule/{input['doctor_name']}.json"
+    with open(filename, "r") as f:
+        data = json.loads(f)
+        return data[input["start"].date()]
+
 
 def add_doctors_appointment(data:dict):
     doctor_name = data['doctor_name']

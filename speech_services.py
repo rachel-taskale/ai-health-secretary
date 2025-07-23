@@ -5,15 +5,14 @@ import time
 import openai
 
 import assemblyai as aai
-import tempfile
 import os
 import uuid
 import config
 
 from config import config
 import websockets
-from helpers import data_extraction, get_next_prompt, handle_appointment_scheduling
-from file_storage import append_patient_record
+from helpers import data_extraction, get_next_prompt, handle_appointment_scheduling, synthesize_speech
+from file_storage import write_patient_record
 from validators import validate_full_address
 
 # Configure clients
@@ -21,7 +20,6 @@ openai.api_key =config.openai.api_key
 aai.settings.api_key = config.assemblyai.api_key
 transcriber = aai.Transcriber()
 
-AUDIO_OUTPUT_DIR = "./audio_output"
 
 
 # Use assembly AI to transcribe the audio
@@ -58,24 +56,6 @@ async def stream_audio_to_assemblyai(audio_generator, on_transcript):
         return await asyncio.gather(send_audio(), receive_transcripts())
 
 
-def synthesize_speech(text: str, voice: str = "nova", output_dir: str = AUDIO_OUTPUT_DIR) -> str:
-    response = openai.audio.speech.create(
-        model="tts-1",
-        voice=voice,
-        input=text,
-    )
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    filename = f"{uuid.uuid4()}.mp3"
-    file_path = os.path.join(output_dir, filename)
-
-    with open(file_path, "wb") as f:
-        f.write(response.content)
-
-    return file_path
-
 
 
 # Function to handle all of our cases for receiving data from the user
@@ -98,21 +78,14 @@ async def on_transcript(text, session_state):
     session_state[current_state] = data
     session_state["state"] = next_prompt(current_state)
 
-    # Otherwise, prompt the user for the next input
+    # prompt the user for the next input
     next_prompt = get_next_prompt(session_state["state"])
     next_audio = synthesize_speech(next_prompt)
     # if we reach the end then we should save all the information
     if next_prompt == 'done':
         print(f"current state: {session_state}")
-        session_data = {
-                    "phone": session_state["phone"],
-                    "email": session_state["email"],
-                    "dob": session_state["dob"],
-                    "insurance": session_state["insurance"],
-                    "timestamp": int(time.time()),
-                }
         # Save it to our text file
-        append_patient_record(session_data)
+        write_patient_record(session_state)
     return {"retry": False, "audio_path": next_audio}
 
    
