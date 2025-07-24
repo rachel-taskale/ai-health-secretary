@@ -21,7 +21,7 @@ class TwilioMediaStreamHandler:
         data = request.json
         self.stream_sid = data["streamSid"]
         self.sessions[self.stream_sid] = {
-                "state": "address",  # or whatever your initial state is
+                "state": "name",  # or whatever your initial state is
             }
         # Start Assembly in background
         self.assembly_client.start(
@@ -62,10 +62,19 @@ class TwilioMediaStreamHandler:
             print(f"No session found for {self.stream_sid}")
             return
 
-        result = await on_transcript(text, session_state)  # ✅ your function
-
+        result, updated_session_state = await on_transcript(text, session_state)  # ✅ your function
+        self.sessions[self.stream_sid] = updated_session_state
         audio_url = result["audio_path"]
         print(f"Streaming audio back: {audio_url}")
+        return (
+            f"""
+            <Response>
+                 <Play>{audio_url}</Play>
+            </Response>
+            """,
+            200,
+            {"Content-Type": "text/xml"},
+        )
 
         
     

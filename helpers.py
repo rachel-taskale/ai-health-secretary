@@ -1,13 +1,22 @@
 import json
 import os
 import uuid
+from openai import OpenAI
 import openai
+
+client = OpenAI()
 from file_storage import get_doctors_appointments
 from validators import validate_appointment_time, validate_regex
 
 AUDIO_OUTPUT_DIR = "./audio_output"
 
-
+def play_audio(response_text: str):
+    audio_url = synthesize_speech(response_text)  # returns hosted mp3 URL
+    return f"""
+        <Response>
+            <Play>{audio_url}</Play>
+        </Response>
+    """
 
 
 def get_next_prompt(state):
@@ -19,8 +28,9 @@ def get_next_prompt(state):
         appointments_natural_language = convert_appointments_to_natural_language(doctors_appointments)
 
     prompts = {
+        "name": "Welcome, please state your name so we can identify your patient account",
         "insurance_payer": "Please provide the member name on your insurance card",
-        "insurance": "Please provide your insurance ID.",
+        "insurance_id": "Please provide your insurance ID.",
         "address": "Please provide your address in the format: street address, city, state, and zip code.",
         "topic_of_call": "Why are you scheduling an appointment today?",
         "phone": "What is your phone number?",
@@ -32,9 +42,11 @@ def get_next_prompt(state):
 
 def openAIPrompts(type):
     match type:
-        case "insurance_payer":
+        case "name":
             return "Extract the first and last name of the caller from the transcript"
-        case "insurance":
+        case "insurance_payer":
+            return "Extract the first and last name of the insurance payer from the transcript"
+        case "insurance_id":
             return "Extract the insurance id fom the transcript"
         case "topic_of_call":
             return "Extract the main topic of scheduling an appointment with the doctor from the transcript"
@@ -43,7 +55,7 @@ def openAIPrompts(type):
         case "email":
             return "Extract the email address from the transcript"
     return None
-        
+
 
 
 
@@ -58,10 +70,8 @@ def convert_appointments_to_natural_language(raw_input: str) -> dict:
     "{raw_input}"
     """
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}]
-    )
+    response = client.chat.completions.create(model="gpt-4",
+    messages=[{"role": "user", "content": prompt}])
 
     appointments = response.choices[0].message.content.strip()
     return appointments
@@ -71,30 +81,32 @@ def convert_appointments_to_natural_language(raw_input: str) -> dict:
 # Main openai prompt 
 def data_extraction (text: str, type: str):
     prompt =  openAIPrompts(type)
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[
-            {
-                "role": "system",
-                "content": f"Extract {type} from the transcript"
-            },
-            {
-                "role": "user",
-                "content": f"{prompt}\n\nTranscript: {text}\n\n"
-            }
-        ]
-    )
+    print(f"type: {type}, prompt: {prompt}")
+    response = client.chat.completions.create(model="gpt-4",
+    messages=[
+        {
+            "role": "system",
+            "content": f"Extract {type} from the transcript"
+        },
+        {
+            "role": "user",
+            "content": f"{prompt}\n\nTranscript: {text}\n\n"
+        }
+    ])
+    
     # One more round of validation on our regex to confirm the output from OpenAI was correct
-    return validate_regex(response.choices[0].message["content"], type )
+    return validate_regex(response.choices[0].message.content, type )
 
 
 
 # sequence of events
-def next_prompt(current_state):
+def next_prompt_type(current_state):
     match current_state:
+        case "name":
+            return "insurance_payer"
         case "insurance_payer":
-            return "insurance"
-        case "insurance":
+            return "insurance_id"
+        case "insurance_id":
             return "topic_of_call"
         case "topic_of_call":
             return "address"
@@ -106,7 +118,7 @@ def next_prompt(current_state):
             return "schedule_appointment"
         case "schedule_appointment":
             return "done"
-       
+
 
 
 def handle_appointment_scheduling(text):
@@ -125,7 +137,7 @@ def handle_appointment_scheduling(text):
     """
 
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
@@ -137,14 +149,20 @@ def handle_appointment_scheduling(text):
         isValidTime = validate_appointment_time(data)
         if not isValidTime:
             return None, False, f"Appointment is already booked, please choose a different time"
+        
+        # If it is a valid time then we will need write to our doctors appointments file
         return data, True, None
     except json.JSONDecodeError as e:
         return None, False, f"Failed to parse response: {e}"
     except Exception as e:
         return None, False, f"OpenAI error: {e}"
-    
 
+# function to write create audio file in static
 def synthesize_speech(text: str, voice: str = "nova", output_dir: str = AUDIO_OUTPUT_DIR) -> str:
+    print(f"[TTS] Text input: {repr(text)}")  # <-- See what's being passed
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("synthesize_speech: 'text' must be a non-empty string")
+
     response = openai.audio.speech.create(
         model="tts-1",
         voice=voice,
@@ -161,4 +179,8 @@ def synthesize_speech(text: str, voice: str = "nova", output_dir: str = AUDIO_OU
         f.write(response.content)
 
     return file_path
+
+
+def format_date_range(start_time, end_time):
+    formatted = dt.strftime("%B %d, %Y at %I:%M %p")
 

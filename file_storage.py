@@ -12,6 +12,7 @@ DOCTORS_APPOINTMENTS_FILE = os.path.join("data", "doctors_appointments.txt")
 #   "insurance_ID": string,
 #   "topic_of_call": string,
 #   "phone": string,
+#   
 #   "email":string,
 #   "appointments": [
 #       {
@@ -40,37 +41,61 @@ DOCTORS_APPOINTMENTS_FILE = os.path.join("data", "doctors_appointments.txt")
 # in a pseudo-JSON format with a composite key "First#Last".
 def write_patient_record(data: dict):
     key = f'"{data["lastName"]}#{data["firstName"]}"'
+    new_appointment = data["appointments"][0]  # assuming it's a single-item list
 
-    value = {
+    new_value = {
         "insurance_payer": data["insurance_payer"],
-        "insurance_ID": data["insurance_ID"],
+        "insurance_id": data["insurance_id"],
         "topic_of_call": data["topic_of_call"],
         "phone": data["phone"],
         "email": data["email"],
-        "appointments": data["appointments"]
+        "last_name": data["last_name"],
+        "first_name":data["first_name"],
+        "appointments": [new_appointment]
     }
 
-    entry = f'{key} : {json.dumps(value, indent=2)},\n'
-
     # Create file if it doesn't exist
-    if not os.path.exists(PATIENT_RECORDS_FILE):
-        with open(PATIENT_RECORDS_FILE, "w") as f:
+    if not os.path.exists(DOCTORS_APPOINTMENTS_FILE):
+        with open(DOCTORS_APPOINTMENTS_FILE, "w") as f:
             f.write("# Patient Record Data\n")
 
-    # Check if patient already exists
-    with open(PATIENT_RECORDS_FILE, "r") as f:
-        lines = f.readlines()
-        if any(key in line for line in lines):
-            
-            return False
+    updated = False
+    new_lines = []
 
-    # Append new patient record
-    with open(PATIENT_RECORDS_FILE, "a") as f:
-        f.write(entry)
+    with open(DOCTORS_APPOINTMENTS_FILE, "r") as f:
+        for line in f:
+            if line.strip().startswith(key):
+                try:
+                    existing_json_str = line.split(":", 1)[1].rstrip(",\n")
+                    existing_data = json.loads(existing_json_str)
 
-    print(f"✅ Patient {key} written to file.")
+                    # Update fields if changed
+                    for field in ["insurance_payer", "insurance_id", "topic_of_call", "phone", "email"]:
+                        existing_data[field] = new_value[field]
+
+                    # Append appointment if it's new
+                    if new_appointment not in existing_data.get("appointments", []):
+                        existing_data["appointments"].append(new_appointment)
+
+                    # Reconstruct line
+                    updated_line = f"{key} : {json.dumps(existing_data, indent=2)},\n"
+                    new_lines.append(updated_line)
+                    updated = True
+                except Exception as e:
+                    print(f"Failed to parse line for {key}: {e}")
+                    new_lines.append(line)
+            else:
+                new_lines.append(line)
+
+    if not updated:
+        new_line = f'{key} : {json.dumps(new_value, indent=2)},\n'
+        new_lines.append(new_line)
+
+    with open(DOCTORS_APPOINTMENTS_FILE, "w") as f:
+        f.writelines(new_lines)
+
+    print(f"{'Updated' if updated else 'Created'} patient record for {key}")
     return True
-
 
 
 

@@ -1,8 +1,11 @@
 import os
 import re
+from config import config
 
 import requests
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 
 from file_storage import get_doctors_appointments_by_day_and_doctor
 
@@ -13,7 +16,7 @@ EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def validate_regex(text: str, type: str):
-    found = ""
+    found = text
     match type:
         case "phone":
             found = re.search(PHONE_REGEX, text)
@@ -23,7 +26,7 @@ def validate_regex(text: str, type: str):
             found = re.search(EMAIL_REGEX, text)
             if not found or found == "":
                 return "", False, "Invalid email format"
-        case "insurance":
+        case "insurance_id":
             found = re.search(INSURANCE_REGEX, text)
             if not found or found == "":
                 return "", False, "Insurance ID must be 5-15 alphanumeric characters"
@@ -53,23 +56,21 @@ def extract_and_check_address_with_openai(raw_input: str) -> dict:
     "missingFields": ["street", "city"]  # only if status is INCOMPLETE
     }}
 
-    Only respond with valid JSON.
+    Only respond with valid JSON. And convert all spelled out numbers to number format
     """
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}]
-    )
+    response = client.chat.completions.create(model="gpt-4",
+    messages=[{"role": "user", "content": prompt}])
 
     json_text = response.choices[0].message.content.strip()
     return eval(json_text) 
 
- 
+
 
 # Function to take extracted address and validate with external api to check that address actually exists
-def validate_address_with_smarty(street, city, state, zip_code=None):
-    auth_id = os.getenv("SMARTY_AUTH_ID")
-    auth_token = os.getenv("SMARTY_AUTH_TOKEN")
+def validate_address_with_smarty(street, city, state, zip_code=None): 
+    auth_id = config.smartystreets.auth_id
+    auth_token = config.smartystreets.api_key
 
     params = {
         "street": street,
@@ -86,20 +87,21 @@ def validate_address_with_smarty(street, city, state, zip_code=None):
     data = response.json()
 
     if response.status_code == 200 and len(data) > 0:
-        return True, data[0] 
+        return True
     else:
-        return False, None
+        return False
 
 
 
 def validate_full_address(raw_input):
     result = extract_and_check_address_with_openai(raw_input)
+    print(result)
 
     if result.get("status") != "VALID":
         missing_fields = ", ".join(str(f) for f in result.get("missingFields", []))
         return None, False, f"Address is incomplete, please repeat address with {missing_fields}"
 
-    is_valid, details = validate_address_with_smarty(
+    is_valid = validate_address_with_smarty(
         result["street"], result["city"], result["state"], result.get("zip")
     )
     if not is_valid:
@@ -110,7 +112,7 @@ def validate_full_address(raw_input):
         "state": result["state"],
         "zip": result["zip"]
     }
-    return ans, True, details
+    return ans, True, ""
 
 
 
@@ -125,4 +127,4 @@ def validate_appointment_time(data: dict):
             if start_time_in_between or end_time_in_between or exsiting_time_booked :
                 return False
     return True
-    
+
