@@ -115,9 +115,8 @@ def get_doctors_appointments():
     all_doctors_appointments = {}
     for file_name in files:
         with open(file_name, "r") as f:
-            data =  [line.strip() for line in f if line.strip()]        
-            json_parsed_data = json.parse(data)
-            all_doctors_appointments[file_name] = json_parsed_data
+            data =  [line.strip() for line in f if line.strip()]
+            all_doctors_appointments[file_name] = data
 
     print(f"all_doctors_appointments: {all_doctors_appointments}")
     return all_doctors_appointments
@@ -130,7 +129,7 @@ def get_doctors_appointments_by_day_and_doctor(input:dict):
 
 
 def add_doctors_appointment(data: dict, patient_name: str, reason:str):
-    doctor_name = data['doctor_name']
+    doctor_name = data['doctors_name']
     start = data["start"]  # assumed format: "HH:MM"
     end = data["end"]      # assumed format: "HH:MM"
 
@@ -185,7 +184,7 @@ def update_session(call_sid, data):
 
 
 
-def on_transcript(text, session):
+def on_write_transcript(text, session):
     sid = session.get("sid")
     if sid:
         with open(f"./{sid}_transcript.txt", "a") as f:

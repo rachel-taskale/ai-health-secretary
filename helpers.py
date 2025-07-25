@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+from flask import Response
 from openai import OpenAI
 import openai
 
@@ -10,16 +11,16 @@ from validators import validate_appointment_time, validate_regex
 
 AUDIO_OUTPUT_DIR = "./audio_output"
 
-def play_audio(response_text: str):
-    audio_url = synthesize_speech(response_text)  # returns hosted mp3 URL
-    return f"""
-        <Response>
-            <Play>{audio_url}</Play>
-        </Response>
-    """
+# def play_audio(response_text: str):
+#     audio_url = synthesize_speech(response_text)  # returns hosted mp3 URL
+#     return f"""
+#         <Response>
+#             <Play>{audio_url}</Play>
+#         </Response>
+#     """
 
 
-def get_next_prompt(state):
+def get_next_agent_response(state):
     appointments_natural_language = ""
     if state == "schedule_appointment":
         # Need to get all potential appointment times
@@ -43,59 +44,70 @@ def get_next_prompt(state):
 def openAIPrompts(type):
     match type:
         case "name":
-            return "Extract the first and last name of the caller from the transcript"
+            return "Extract the first and last name of the caller from the transcript. If it is just a name then that is the caller name"
         case "insurance_payer":
-            return "Extract the first and last name of the insurance payer from the transcript"
+            return (
+                "Extract the insurance payer’s full name from the transcript. "
+                "If only one name is provided, treat it as the insurance payer."
+            )
         case "insurance_id":
-            return "Extract the insurance id fom the transcript"
+            return (
+                "Extract the insurance ID from the transcript. "
+                "It may be mentioned as 'Group Name', 'Member ID', or any similar label found on a health insurance card."
+            )
         case "topic_of_call":
-            return "Extract the main topic of scheduling an appointment with the doctor from the transcript"
+            return "Summarize the main topic of scheduling an appointment with the doctor from the transcript"
         case "phone":
-            return "Extract the phone number in XXXXXXXXXX format from the transcript" 
+           return (
+                "Extract the phone number from the transcript. The user may say the number with spaces, dashes, or the word 'dash' in between digits. "
+                "They may also include the U.S. country code like '+1' or say 'one' at the beginning. "
+                "Return the phone number in E.164 format (e.g., +19177012642). "
+                "Only return the number — do not include any explanation, labels, or extra text."
+            )
         case "email":
-            return "Extract the email address from the transcript"
+           return (
+                "Extract the email address from the transcript. The user may say 'at' instead of '@' and 'dot' instead of '.'. "
+                "Convert those into the correct characters and return the email address in standard format (e.g., user@domain.com). "
+                "Only return the email address — do not include any explanation, labels, or extra text."
+            )
     return None
+
+
+
+def openai_prompt_handler(prompt: str, system_prompt: str = "You are a helpful and accurate medical secretary with expertise in health insurance."):
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content.strip()
 
 
 
 
 def convert_appointments_to_natural_language(raw_input: str) -> dict:
     prompt = f"""
-    You are a secretary for a doctor's office communicate all open time slots to schedule appointments to your patient
-    based on the slots currently filled. If a date doesn't exist in the list then the doctor is free all working hours. 
+    Communicate all open time slots to schedule appointments to your patient based on the 
+    slots currently filled. If a date doesn't exist in the list then the doctor is free all working hours. 
     
     Working hours are 9:00am - 5:00pm EST
     Only communicate open time ranges for the next two weeks
 
     "{raw_input}"
     """
-
-    response = client.chat.completions.create(model="gpt-4",
-    messages=[{"role": "user", "content": prompt}])
-
-    appointments = response.choices[0].message.content.strip()
-    return appointments
+    return openai_prompt_handler(prompt)
 
 
 
 # Main openai prompt 
 def data_extraction (text: str, type: str):
-    prompt =  openAIPrompts(type)
-    print(f"type: {type}, prompt: {prompt}")
-    response = client.chat.completions.create(model="gpt-4",
-    messages=[
-        {
-            "role": "system",
-            "content": f"Extract {type} from the transcript"
-        },
-        {
-            "role": "user",
-            "content": f"{prompt}\n\nTranscript: {text}\n\n"
-        }
-    ])
-    
+    base_prompt = openAIPrompts(type)
+    final_prompt = f"{base_prompt}\n\nTranscript: {text}"
+    response = openai_prompt_handler(final_prompt)
     # One more round of validation on our regex to confirm the output from OpenAI was correct
-    return validate_regex(response.choices[0].message.content, type )
+    return validate_regex(response, type)
 
 
 
@@ -181,6 +193,5 @@ def synthesize_speech(text: str, voice: str = "nova", output_dir: str = AUDIO_OU
     return file_path
 
 
-def format_date_range(start_time, end_time):
-    formatted = dt.strftime("%B %d, %Y at %I:%M %p")
+
 

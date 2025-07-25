@@ -6,6 +6,7 @@ import uuid
 from flask import Response
 from io import BytesIO
 
+from helpers import twiml_response_with_hangup
 from speech_services import on_transcript
 
 class TwilioMediaStreamHandler:
@@ -21,7 +22,8 @@ class TwilioMediaStreamHandler:
         data = request.json
         self.stream_sid = data["streamSid"]
         self.sessions[self.stream_sid] = {
-                "state": "name",  # or whatever your initial state is
+                "state": "name",
+                "retries":{}  # or whatever your initial state is
             }
         # Start Assembly in background
         self.assembly_client.start(
@@ -54,35 +56,38 @@ class TwilioMediaStreamHandler:
         return Response(status=200)
     
 
+def twiml_response_with_hangup(message: str) -> Response:
+    return Response(f"""<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+        <Say voice="alice">{message}</Say>
+        <Hangup/>
+    </Response>""", mimetype="text/xml")
 
-    async def handle_transcript(self, text):
-        print(f"📝 User said: {text}")
-        session_state = self.sessions.get(self.stream_sid)
-        if not session_state:
-            print(f"No session found for {self.stream_sid}")
-            return
 
-        result, updated_session_state = await on_transcript(text, session_state)  # ✅ your function
-        self.sessions[self.stream_sid] = updated_session_state
-        audio_url = result["audio_path"]
-        print(f"Streaming audio back: {audio_url}")
-        return (
-            f"""
-            <Response>
-                 <Play>{audio_url}</Play>
-            </Response>
-            """,
-            200,
-            {"Content-Type": "text/xml"},
-        )
+async def handle_transcript(self, text):
+    print(f"📝 User said: {text}")
+    session_state = self.sessions.get(self.stream_sid)
+    if not session_state:
+        print(f"No session found for {self.stream_sid}")
+        return twiml_response_with_hangup("Session ended due to a system error.")
 
-        
-    
-        # filename = f"{uuid.uuid4()}.mp3"
-        # filepath = os.path.join(self.audio_dir, filename)
-        # with open(filepath, "wb") as f:
-        #     f.write(speech.content)
+    result, updated_session_state = await on_transcript(text, session_state)
 
-        # Send <Play> TwiML redirect to Twilio (optional step: needs call SID)
-        # For now, serve via <Play> in your app logic
-        # print(f"🔊 MP3 ready: {self.host_url}/static/audio/{filename}")
+    if result.get("end_call"):
+        if result.get("confirmed"):
+            return (Response(f"""<?xml version="1.0" encoding="UTF-8"?>
+                        <Response>
+                            <Hangup/>
+                        </Response>""", mimetype="text/xml"))
+        return twiml_response_with_hangup(result["message"])
+
+    # Update session state
+    self.sessions[self.stream_sid] = updated_session_state
+
+    audio_url = result.get("audio_path")
+    print(f"Streaming audio back: {audio_url}")
+
+    return Response(f"""<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+        <Play>{audio_url}</Play>
+    </Response>""", mimetype="text/xml")
