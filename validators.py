@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import os
 import re
@@ -144,13 +145,23 @@ def validate_full_address(raw_input):
 
 
 def validate_appointment_time(data: dict):
+    print("validate_appointment_time")
     # get the date from the start and end times:
     appointments_on_date = get_doctors_appointments_by_day_and_doctor(data)
-    for i in appointments_on_date:
-            start_time_in_between = i["start_date"] <=  input["start"] and i["start_date"] >=  input["end"]
-            end_time_in_between = i["end_date"] <=  input["start"] and i["end_date"] >=  input["end"]
-            exsiting_time_booked = i["start_date"] >=   input["start"] and i["end_date"] <=  input["end"]
-            if start_time_in_between or end_time_in_between or exsiting_time_booked :
-                return False
-    return True
+    start_dt = datetime.fromisoformat(data["start"])
+    end_dt = datetime.fromisoformat(data["end"])
+    
+    # Subtract to get a timedelta object
+    duration = end_dt - start_dt
+    print(duration)
+    if (duration.seconds // 60) >= 60:
+        return False, "Invalid appointment duration, can't schedule an appointment with a doctor for more than 1 hour"
+    if appointments_on_date:
+        for i in appointments_on_date:
+                start_time_in_between = i["start_date"] <=  input["start"] and i["start_date"] >=  input["end"]
+                end_time_in_between = i["end_date"] <=  input["start"] and i["end_date"] >=  input["end"]
+                exsiting_time_booked = i["start_date"] >=   input["start"] and i["end_date"] <=  input["end"]
+                if start_time_in_between or end_time_in_between or exsiting_time_booked :
+                    return False, "Appointment time is already booked, choose a different doctor"
+    return True, ""
 

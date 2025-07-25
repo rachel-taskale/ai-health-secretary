@@ -11,14 +11,6 @@ from validators import validate_appointment_time, validate_regex
 
 AUDIO_OUTPUT_DIR = "./audio_output"
 
-# def play_audio(response_text: str):
-#     audio_url = synthesize_speech(response_text)  # returns hosted mp3 URL
-#     return f"""
-#         <Response>
-#             <Play>{audio_url}</Play>
-#         </Response>
-#     """
-
 
 def get_next_agent_response(state):
     appointments_natural_language = ""
@@ -44,7 +36,16 @@ def get_next_agent_response(state):
 def openAIPrompts(type):
     match type:
         case "name":
-            return "Extract the first and last name of the caller from the transcript. If it is just a name then that is the caller name"
+            return (
+                "Extract the caller's first and last name from the transcript.\n"
+                "If only one name is given, assume it is the first name and leave last name empty.\n"
+                "Return the result as a JSON object with this format:\n\n"
+                '{\n'
+                '  "first_name": "string",\n'
+                '  "last_name": "string"\n'
+                '}\n\n'
+                "Do not include any explanation — only return the JSON object."
+            )
         case "insurance_payer":
             return (
                 "Extract the insurance payer’s full name from the transcript. "
@@ -83,7 +84,6 @@ def openai_prompt_handler(prompt: str, system_prompt: str = "You are a helpful a
         ]
     )
     return response.choices[0].message.content.strip()
-
 
 
 
@@ -134,36 +134,44 @@ def next_prompt_type(current_state):
 
 
 def handle_appointment_scheduling(text):
-    # extract the data
     prompt = f"""
-        You are a secretary for a doctor's office. Extract all relevant scheduling information from the patient's message.
+    Extract the scheduling information from the patient's message.
 
-        Given this input: "{text}"
+    Input:
+    "{text}"
 
-        Return a JSON object in this format (no explanations):
-        {{
-            "doctors_name": "string, e.g. 'john'",
-            "start": "ISO 8601 timestamp for the start time, e.g. '2025-07-22T15:00:00'",
-            "end": "ISO 8601 timestamp for the end time"
-        }}
+    Return a valid JSON object with the following fields:
+    {{
+      "doctor_name": "string, e.g. 'john'",
+      "start": "start time in ISO 8601 format, e.g. '2025-07-22T15:00:00'",
+      "end": "end time in ISO 8601 format",
+      "missing_fields": ["list of any missing fields, e.g. 'doctor_name', 'start', 'end'"]
+    }}
+
+    Do not include any explanation — only return the JSON object.
+    If all fields are present, return an empty list for "missing_fields".
     """
 
     try:
-        response = openai.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
-        raw_content = response.choices[0].message.content.strip()
-        data = json.loads(raw_content)
+        response = openai_prompt_handler(prompt)
+        print(f"-----response: {response}")
+        json_response = json.loads(response)
+        print(f"-----AFTER response: {response}")
 
-        # Validate that the appointment is available
-        isValidTime = validate_appointment_time(data)
-        if not isValidTime:
-            return None, False, f"Appointment is already booked, please choose a different time"
-        
-        # If it is a valid time then we will need write to our doctors appointments file
-        return data, True, None
+        missing_fields = json_response.get("missing_fields", None)
+
+        if missing_fields == None:
+            return None, False, (
+                f"We need more information. Please repeat your appointment preference with "
+                f"these missing fields: {json_response['missing_fields']}"
+            )
+
+        is_valid_time, error_message = validate_appointment_time(json_response)
+        if not is_valid_time:
+            return None, False, error_message
+
+        return json_response, True, None
+
     except json.JSONDecodeError as e:
         return None, False, f"Failed to parse response: {e}"
     except Exception as e:

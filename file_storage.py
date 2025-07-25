@@ -40,8 +40,9 @@ DOCTORS_APPOINTMENTS_FILE = os.path.join("data", "doctors_appointments.txt")
 # Appends a new patient record to the doctors_appointments file 
 # in a pseudo-JSON format with a composite key "First#Last".
 def write_patient_record(data: dict):
-    key = f'"{data["lastName"]}#{data["firstName"]}"'
-    new_appointment = data["appointments"][0]  # assuming it's a single-item list
+    print("write_patient_record")
+    key = f'"{data["last_name"]}#{data["first_name"]}"'
+    new_appointment = data["appointments"]
 
     new_value = {
         "insurance_payer": data["insurance_payer"],
@@ -124,14 +125,15 @@ def get_doctors_appointments():
 def get_doctors_appointments_by_day_and_doctor(input:dict):
     filename = f"./data/schedule/{input['doctor_name']}.json"
     with open(filename, "r") as f:
-        data = json.loads(f)
-        return data[input["start"].date()]
+        data = json.load(f) 
+        return data
 
 
 def add_doctors_appointment(data: dict, patient_name: str, reason:str):
-    doctor_name = data['doctors_name']
-    start = data["start"]  # assumed format: "HH:MM"
-    end = data["end"]      # assumed format: "HH:MM"
+    print("add_doctors_appointment")
+    doctor_name = data['doctor_name']
+    start = data["start"]  
+    end = data["end"]      
 
     # Convert time to a date string for use as dict key
     date_str = datetime.strptime(start, "%H:%M").date().isoformat() 
@@ -161,32 +163,32 @@ def add_doctors_appointment(data: dict, patient_name: str, reason:str):
 
 
 
-SESSIONS_FILE = "./data/call_sessions.json"
-# Saving call sessions here
-def load_sessions():
-    if not os.path.exists(SESSIONS_FILE):
-        return {}
-    with os.F_LOCK, open(SESSIONS_FILE, "r") as f:
-        return json.load(f)
+# SESSIONS_FILE = "./data/call_sessions.json"
+# # Saving call sessions here
+# def load_sessions():
+#     if not os.path.exists(SESSIONS_FILE):
+#         return {}
+#     with os.F_LOCK, open(SESSIONS_FILE, "r") as f:
+#         return json.load(f)
 
-def save_sessions(sessions):
-    with os.F_LOCK, open(SESSIONS_FILE, "w") as f:
-        json.dump(sessions, f, indent=2)
+# def save_sessions(sessions):
+#     with os.F_LOCK, open(SESSIONS_FILE, "w") as f:
+#         json.dump(sessions, f, indent=2)
 
-def get_session(call_sid):
-    sessions = load_sessions()
-    return sessions.get(call_sid)
+# def get_session(call_sid):
+#     sessions = load_sessions()
+#     return sessions.get(call_sid)
 
-def update_session(call_sid, data):
-    sessions = load_sessions()
-    sessions[call_sid] = data
-    save_sessions(sessions)
+# def update_session(call_sid, data):
+#     sessions = load_sessions()
+#     sessions[call_sid] = data
+#     save_sessions(sessions)
 
 
 
-def on_write_transcript(text, session):
-    sid = session.get("sid")
-    if sid:
-        with open(f"./{sid}_transcript.txt", "a") as f:
-            f.write(text + "\n")
-    return text
+# def on_write_transcript(text, session):
+#     sid = session.get("sid")
+#     if sid:
+#         with open(f"./{sid}_transcript.txt", "a") as f:
+#             f.write(text + "\n")
+#     return text

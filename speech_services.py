@@ -40,6 +40,8 @@ async def on_transcript(text, session_state):
             data, valid, error = validate_full_address(text)
         case "schedule_appointment":
             data, valid, error = handle_appointment_scheduling(text)
+            if not valid and error != "": add_doctors_appointment(data, session_state["name"], session_state["topic_of_call"] )
+
         case _:
             data, valid, error = data_extraction(text, current_state)
 
@@ -61,9 +63,15 @@ async def on_transcript(text, session_state):
         }, session_state
 
     # ✅ Valid input — store it and reset retry counter
-    session_state[current_state] = data
+    if current_state=="name":
+        session_state["last_name"] = data["last_name"]
+        session_state["first_name"] = data["first_name"]
+    elif current_state=="schedule_appointment":
+        session_state["appointments"] = data
+    else:
+        session_state[current_state] = data
     session_state["retries"][current_state] = 0  # reset retries
-    
+
 
     # Advance to next state
     session_state["state"] = next_prompt_type(current_state)
@@ -73,43 +81,6 @@ async def on_transcript(text, session_state):
 
     return {"retry": False, "audio_path": None}, session_state
 
-
-
-# Main function to handle all of our cases for receiving data from the user
-# async def on_transcript(text, session_state):
-#     print(session_state)
-#     current_state = session_state["state"]
-#     # Ternary function handle all the
-#     # send the data to the openai and extract the data from it
-#     if current_state == "address": 
-#         data, valid, error = validate_full_address(text)
-#     elif current_state == "schedule_appointment":
-#         data, valid, error = handle_appointment_scheduling(text)
-#         add_doctors_appointment(data, session_state["name"], session_state["topic_of_call"])
-#     else: 
-#         data, valid, error = data_extraction(text, current_state)
-#     if not valid or not data:
-#         print(f"an error occured: {error}")
-#         retry_audio = synthesize_speech(error)
-#         return {"retry": True, "audio_path": retry_audio}, session_state
-
-#     # For now we arent going to confirm with the user, just do extraction & store
-   
-#     session_state[current_state] = data
-#     session_state["state"] = next_prompt_type(current_state)
-
-#     # prompt the user for the next input
-#     next_prompt = get_next_agent_response(session_state["state"])
-#     next_audio = synthesize_speech(next_prompt)
-#     # if we reach the end then we should save all the information
-#     if next_prompt == 'done':
-#         print(f"current state: {session_state}")
-#         # Save it to our text file
-#         write_patient_record(session_state)
-    
-#         send_confirmation_email_html(session_state)
-
-#     return {"retry": False, "audio_path": next_audio}, session_state
 
 
 

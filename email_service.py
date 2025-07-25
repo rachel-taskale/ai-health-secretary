@@ -1,13 +1,16 @@
+from datetime import datetime
 import os
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
 
 def send_confirmation_email_html(session_state:dict):
-    session_state["name"].split(" ")
-    formatted_start_time = session_state["start"].strftime("%B %d, %Y at %I:%M %p")
-    formatted_end_time = session_state["start"].strftime("%B %d, %Y at %I:%M %p")
-    latest_appointment_scheduled =session_state["schedule_appointment"][len(session_state["schedule_appointment"])-1]
+    print(session_state["appointments"])
+    start_dt = datetime.fromisoformat(session_state["appointments"]["start"])
+    end_dt = datetime.fromisoformat(session_state["appointments"]["end"])
+    formatted_start_time = start_dt.strftime("%B %d, %Y at %I:%M %p")
+    formatted_end_time = end_dt.strftime("%B %d, %Y at %I:%M %p")
+    latest_appointment_scheduled =session_state["appointments"]
     html_content = f"""
                         <html>
                         <head>
@@ -47,7 +50,7 @@ def send_confirmation_email_html(session_state:dict):
                             <div class="container">
                             <h2 class="header">Appointment Confirmed</h2>
                             <p class="details">
-                                Hi {session_state["name"]},<br><br>
+                                Hi {session_state["first_name"]} {session_state["last_name"]},<br><br>
                                 This is a quick note to confirm your upcoming appointment with Dr.{latest_appointment_scheduled["doctor_name"]}:
                             </p>
                             <p class="details">
