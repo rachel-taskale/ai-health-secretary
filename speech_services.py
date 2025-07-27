@@ -40,8 +40,13 @@ async def on_transcript(text, session_state):
             data, valid, error = validate_full_address(text)
         case "schedule_appointment":
             data, valid, error = handle_appointment_scheduling(text)
-            if not valid and error != "": add_doctors_appointment(data, session_state["name"], session_state["topic_of_call"] )
-
+            if valid and data:
+                add_doctors_appointment(data, session_state["name"], session_state["topic_of_call"])
+        case "done":
+            return {
+                "end_call": True,
+                "confirmed": True
+            }, session_state
         case _:
             data, valid, error = data_extraction(text, current_state)
 
@@ -63,10 +68,8 @@ async def on_transcript(text, session_state):
         }, session_state
 
     # ✅ Valid input — store it and reset retry counter
-    if current_state=="name":
-        session_state["last_name"] = data["last_name"]
-        session_state["first_name"] = data["first_name"]
-    elif current_state=="schedule_appointment":
+    
+    if current_state=="schedule_appointment":
         session_state["appointments"] = data
     else:
         session_state[current_state] = data
@@ -78,6 +81,10 @@ async def on_transcript(text, session_state):
     if session_state["state"] == "done":
         write_patient_record(session_state)
         send_confirmation_email_html(session_state)
+        return {
+            "end_call": True,
+            "confirmed": True
+    }, session_state
 
     return {"retry": False, "audio_path": None}, session_state
 

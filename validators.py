@@ -153,7 +153,6 @@ def validate_appointment_time(data: dict):
     
     # Subtract to get a timedelta object
     duration = end_dt - start_dt
-    print(duration)
     if (duration.seconds // 60) >= 60:
         return False, "Invalid appointment duration, can't schedule an appointment with a doctor for more than 1 hour"
     if appointments_on_date:
