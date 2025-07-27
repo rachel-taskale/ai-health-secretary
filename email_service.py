@@ -50,8 +50,8 @@ def send_confirmation_email_html(session_state:dict):
                             <div class="container">
                             <h2 class="header">Appointment Confirmed</h2>
                             <p class="details">
-                                Hi {session_state["first_name"]} {session_state["last_name"]},<br><br>
-                                This is a quick note to confirm your upcoming appointment with Dr.{latest_appointment_scheduled["doctor_name"]}:
+                                Hi {session_state["name"]["first_name"].capitalize()} {session_state["name"]["last_name"].capitalize()},<br><br>
+                                This is a quick note to confirm your upcoming appointment with Dr. {latest_appointment_scheduled["doctor_name"].capitalize()}:
                             </p>
                             <p class="details">
                                 <strong>📅 Time:</strong> {formatted_start_time} until {formatted_end_time} <br>
@@ -69,9 +69,9 @@ def send_confirmation_email_html(session_state:dict):
                         """
 
     message = Mail(
-        from_email='clinic@example.com',
+        from_email='racheltaskale@gmail.com',
         to_emails=session_state["email"],
-        subject='Your Appointment with {} is Confirmed!',
+        subject=f"Your Appointment with Dr. {latest_appointment_scheduled["doctor_name"].capitalize()} is Confirmed!",
         html_content=html_content
     )
 

@@ -28,6 +28,8 @@ class OpenAIConfig:
 
 @dataclass
 class AppConfig:
+    hosturl: str = os.getenv("HOST_URL")
+    audiodir: str = os.getenv("AUDIO_DIR")
     sendgrid: SendGridConfig = field(default_factory=lambda: SendGridConfig(
     api_key=os.getenv("SENDGRID_API_KEY"),
     ))

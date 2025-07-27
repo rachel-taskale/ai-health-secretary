@@ -1,55 +1,95 @@
+import base64
+import json
+import logging
 import os
-from quart import Quart, request, send_from_directory
-from dotenv import load_dotenv
+import threading
+from assemblyai_client import AssemblyAIClient
+from config import config
+from flask import Flask
+from flask_sockets import Sockets
+from openai_client import OpenAIClient
+
+from gevent import pywsgi
+from geventwebsocket.handler import WebSocketHandler
 
 from twilio_media_streams import TwilioMediaStreamHandler
-from assemblyai_client import AssemblyAIClient
-from openai_client import OpenAIClient
-from config import config
 
-load_dotenv()
-app = Quart(__name__)
-HOST_URL = os.getenv("HOST_URL")
-AUDIO_DIR = "./static/audio"
-os.makedirs(AUDIO_DIR, exist_ok=True)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-openai_client = OpenAIClient(config.openai.api_key, AUDIO_DIR, HOST_URL)
-assembly_client = AssemblyAIClient(config.assemblyai.api_key)
-twilio_handler = TwilioMediaStreamHandler(assembly_client, openai_client, AUDIO_DIR, HOST_URL)
+app = Flask(__name__)
+sockets = Sockets(app)
 
-@app.route("/", methods=["POST"])
-async def twilio_entry():
-    print("twilio_entry")
-    return (
-        f"""
-        <Response>
-            <Start>
-                <Stream url="{HOST_URL}/twilio-stream" />
-            </Start>
-            <Say>Hello! How can I help you today?</Say>
-        </Response>
-        """,
-        200,
-        {"Content-Type": "text/xml"},
-    )
 
-@app.route("/twilio-stream", methods=["POST"])
-async def start_stream():
-    return await twilio_handler.start_stream(request)
+    
+ 
 
-@app.route("/twilio-stream", methods=["PUT"])
-async def receive_audio():
-    return await twilio_handler.receive_audio(request)
+@sockets.route('/media')
+def media_stream(ws):
+    """Handle WebSocket media stream"""
+    logger.info("Media stream connection established")
+    assembly_client = AssemblyAIClient(config.assemblyai.api_key)
+    openai_client = OpenAIClient(config.openai.api_key)
+    handler = TwilioMediaStreamHandler(assembly_client, openai_client, "./static/audio", os.getenv("HOST_URL"), ws)
+    
+    message_count = 0
+    
+    while not ws.closed:
+        message = ws.receive()
+        if message is None:
+            logger.info("No message received...")
+            continue
+        
+        message_count += 1
+        
+        try:
+            # Parse JSON message
+            data = json.loads(message)
+            event = data.get('event')
+            
+            # Route to appropriate handler
+            if event == 'connected':
+                print(f"WebSocket connected: {data}")
+                handler.handle_connected(data)
+            elif event == 'start':
+                print(f"Stream started: {data}")
+                handler.handle_start(data)
+            elif event == 'media':
+                handler.handle_media(data)
+            elif event == 'mark':
+                handler.handle_mark(data)
+            elif event == 'stop':
+                handler.stop_stream_ws({"streamSid": handler.stream_sid})
 
-@app.route("/twilio-stream", methods=["DELETE"])
-async def stop_stream():
-    return await twilio_handler.stop_stream(request)
+                break
+            # Note: Removed DTMF handler since we're voice-only
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}")
+        except Exception as e:
+            logger.error(f"Error processing message: {e}")
+    
+    logger.info(f"Media stream closed. Processed {message_count} messages")
 
-@app.route("/static/audio/<filename>")
-async def serve_audio(filename):
-    return await send_from_directory(AUDIO_DIR, filename)
-
-@app.route("/twilio-stream", methods=["GET"])
-async def health_check():
-    return "OK"
-
+if __name__ == '__main__':
+    app.logger.setLevel(logging.DEBUG)
+    
+    HTTP_SERVER_PORT = 5002
+    
+    logger.info("Starting Twilio Voice-Only Media Stream server...")
+    logger.info(f"Server will be available at: ws://localhost:{HTTP_SERVER_PORT}/media")
+    logger.info("\nRequired audio files in 'audio_files/' directory:")
+    logger.info("- welcome.mp3 (initial greeting)")
+    logger.info("- ask_name.mp3 ('Please tell me your full name')")
+    logger.info("- ask_member_id.mp3 ('Please tell me your insurance member ID')")
+    logger.info("- ask_dob.mp3 ('Please tell me your date of birth')")
+    logger.info("- confirm_info.mp3 ('Let me confirm your information...')")
+    logger.info("- goodbye.mp3 ('Thank you, goodbye')")
+    logger.info("\nSetup steps:")
+    logger.info("1. Add your MP3 files to the 'audio_files/' directory")
+    logger.info("2. Use ngrok to expose this server: ngrok http 5002")
+    logger.info("3. Update your TwiML to use: wss://your-ngrok-url.ngrok.io/media")
+    
+    server = pywsgi.WSGIServer(('', HTTP_SERVER_PORT), app, handler_class=WebSocketHandler)
+    server.serve_forever()

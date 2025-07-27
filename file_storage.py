@@ -4,8 +4,8 @@ from datetime import datetime
 import uuid
 
 
-PATIENT_RECORDS_FILE = os.path.join("data", "patient_records.txt")
-DOCTORS_APPOINTMENTS_FILE = os.path.join("data", "doctors_appointments.txt")
+PATIENT_RECORDS_FILE = os.path.join("data", "patient_records.json")
+DOCTORS_APPOINTMENTS_FILE = os.path.join("data", "doctors_appointments.json")
 # Patient Record Data
 # "firstname#lastname" : {
 #   "insurance_payer": string,
@@ -35,13 +35,9 @@ DOCTORS_APPOINTMENTS_FILE = os.path.join("data", "doctors_appointments.txt")
     #      }    
 #   }
 
-
-
-# Appends a new patient record to the doctors_appointments file 
-# in a pseudo-JSON format with a composite key "First#Last".
 def write_patient_record(data: dict):
     print("write_patient_record")
-    key = f'"{data["last_name"]}#{data["first_name"]}"'
+    key = f"{data['name']['last_name']}#{data['name']['first_name']}"
     new_appointment = data["appointments"]
 
     new_value = {
@@ -50,52 +46,38 @@ def write_patient_record(data: dict):
         "topic_of_call": data["topic_of_call"],
         "phone": data["phone"],
         "email": data["email"],
-        "last_name": data["last_name"],
-        "first_name":data["first_name"],
+        "last_name": data['name']["last_name"],
+        "first_name": data['name']["first_name"],
         "appointments": [new_appointment]
     }
 
-    # Create file if it doesn't exist
-    if not os.path.exists(DOCTORS_APPOINTMENTS_FILE):
-        with open(DOCTORS_APPOINTMENTS_FILE, "w") as f:
-            f.write("# Patient Record Data\n")
+    # Load existing records or initialize
+    if os.path.exists(PATIENT_RECORDS_FILE):
+        with open(PATIENT_RECORDS_FILE, "r") as f:
+            try:
+                records = json.load(f)
+            except json.JSONDecodeError:
+                print("Warning: Corrupt JSON file, reinitializing.")
+                records = {}
+    else:
+        records = {}
 
-    updated = False
-    new_lines = []
+    if key in records:
+        patient = records[key]
+        for field in ["insurance_payer", "insurance_id", "topic_of_call", "phone", "email"]:
+            patient[field] = new_value[field]
 
-    with open(DOCTORS_APPOINTMENTS_FILE, "r") as f:
-        for line in f:
-            if line.strip().startswith(key):
-                try:
-                    existing_json_str = line.split(":", 1)[1].rstrip(",\n")
-                    existing_data = json.loads(existing_json_str)
+        # Avoid duplicate appointments
+        if new_appointment not in patient.get("appointments", []):
+            patient["appointments"].append(new_appointment)
+        print(f"Updated patient record for {key}")
+    else:
+        records[key] = new_value
+        print(f"Created new patient record for {key}")
 
-                    # Update fields if changed
-                    for field in ["insurance_payer", "insurance_id", "topic_of_call", "phone", "email"]:
-                        existing_data[field] = new_value[field]
+    with open(PATIENT_RECORDS_FILE, "w") as f:
+        json.dump(records, f, indent=2)
 
-                    # Append appointment if it's new
-                    if new_appointment not in existing_data.get("appointments", []):
-                        existing_data["appointments"].append(new_appointment)
-
-                    # Reconstruct line
-                    updated_line = f"{key} : {json.dumps(existing_data, indent=2)},\n"
-                    new_lines.append(updated_line)
-                    updated = True
-                except Exception as e:
-                    print(f"Failed to parse line for {key}: {e}")
-                    new_lines.append(line)
-            else:
-                new_lines.append(line)
-
-    if not updated:
-        new_line = f'{key} : {json.dumps(new_value, indent=2)},\n'
-        new_lines.append(new_line)
-
-    with open(DOCTORS_APPOINTMENTS_FILE, "w") as f:
-        f.writelines(new_lines)
-
-    print(f"{'Updated' if updated else 'Created'} patient record for {key}")
     return True
 
 
@@ -112,45 +94,52 @@ def get_all_doctor_files():
 
 def get_doctors_appointments():
     files = get_all_doctor_files()
-    # Need to aggregate all the data
     all_doctors_appointments = {}
     for file_name in files:
-        with open(file_name, "r") as f:
-            data =  [line.strip() for line in f if line.strip()]
-            all_doctors_appointments[file_name] = data
+        try:
+            with open(file_name, "r") as f:
+                data = json.load(f)  
+                all_doctors_appointments[file_name] = data
+        except Exception as e:
+            print(f"Failed to load {file_name}: {e}")
 
     print(f"all_doctors_appointments: {all_doctors_appointments}")
     return all_doctors_appointments
 
 def get_doctors_appointments_by_day_and_doctor(input:dict):
+    print("get_doctors_appointments_by_day_and_doctor")
     filename = f"./data/schedule/{input['doctor_name']}.json"
     with open(filename, "r") as f:
-        data = json.load(f) 
-        return data
+        return json.load(f) 
 
+def add_doctors_appointment(data: dict, patient_name: str, reason: str):
+    print(f"add_doctors_appointment: {data}")
 
-def add_doctors_appointment(data: dict, patient_name: str, reason:str):
-    print("add_doctors_appointment")
-    doctor_name = data['doctor_name']
-    start = data["start"]  
-    end = data["end"]      
+    doctor_name = data["doctor_name"]
+    start_ts = data["start"] 
+    end_ts = data["end"]     
 
-    # Convert time to a date string for use as dict key
-    date_str = datetime.strptime(start, "%H:%M").date().isoformat() 
+    start_dt = datetime.fromisoformat(start_ts)
+    end_dt = datetime.fromisoformat(end_ts)
+
+    date_str = start_dt.date().isoformat()          
+    start_time = start_dt.strftime("%H:%M")         
+    end_time = end_dt.strftime("%H:%M")             
+
     new_uuid = str(uuid.uuid4())
 
     url_path = f"data/schedule/{doctor_name}.json"
     if not os.path.exists(url_path):
         raise FileNotFoundError(f"No schedule found for {doctor_name}")
-    
+
     with open(url_path, "r") as f:
         schedule = json.load(f)
 
     slots = schedule.get(date_str, {})
     slots[new_uuid] = {
         "available": False,
-        "start": start,
-        "end": end,
+        "start": start_time,
+        "end": end_time,
         "patient": patient_name,
         "reason": reason
     }
@@ -161,34 +150,9 @@ def add_doctors_appointment(data: dict, patient_name: str, reason:str):
 
     return True, new_uuid
 
-
-
-# SESSIONS_FILE = "./data/call_sessions.json"
-# # Saving call sessions here
-# def load_sessions():
-#     if not os.path.exists(SESSIONS_FILE):
-#         return {}
-#     with os.F_LOCK, open(SESSIONS_FILE, "r") as f:
-#         return json.load(f)
-
-# def save_sessions(sessions):
-#     with os.F_LOCK, open(SESSIONS_FILE, "w") as f:
-#         json.dump(sessions, f, indent=2)
-
-# def get_session(call_sid):
-#     sessions = load_sessions()
-#     return sessions.get(call_sid)
-
-# def update_session(call_sid, data):
-#     sessions = load_sessions()
-#     sessions[call_sid] = data
-#     save_sessions(sessions)
-
-
-
-# def on_write_transcript(text, session):
-#     sid = session.get("sid")
-#     if sid:
-#         with open(f"./{sid}_transcript.txt", "a") as f:
-#             f.write(text + "\n")
-#     return text
+def on_write_transcript(text, session):
+    sid = session.get("sid")
+    if sid:
+        with open(f"./{sid}_transcript.txt", "a") as f:
+            f.write(text + "\n")
+    return text
