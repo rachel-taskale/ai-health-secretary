@@ -54,13 +54,24 @@ def openAIPrompts(type):
             )
         case "insurance_payer":
             return (
-                "Extract the insurance payer’s full name from the transcript. "
-                "If only one name is provided, treat it as the insurance payer."
+                 "Extract the caller's first and last name from the transcript.\n"
+                "If only one name is given, assume it is the first name and leave last name empty.\n"
+                "Return the result as a JSON object with this format:\n\n"
+                '{\n'
+                '  "first_name": "string",\n'
+                '  "last_name": "string"\n'
+                '}\n\n'
+                "Do not include any explanation — only return the JSON object."
             )
         case "insurance_id":
             return (
-                "Extract the insurance ID from the transcript. "
-                "It may be mentioned as 'Group Name', 'Member ID', or any similar label found on a health insurance card."
+                   "The user is providing their insurance ID by spelling it out. "
+                    "Convert this transcript to an insurance ID: "
+                    "- 'one' = 1, 'two' = 2, 'three' = 3, 'four' = 4, 'five' = 5, 'six' = 6, 'seven' = 7, 'eight' = 8, 'nine' = 9, 'zero' = 0 "
+                    "- Letter names become uppercase letters: 'a' = A, 'b' = B, 'c' = C, 'd' = D, etc. "
+                    "Combine all characters into one string with no spaces. "
+                    "For transcript 'one two three d', return '123D'. "
+                    "Return only the converted ID or empty string if invalid."
             )
         case "topic_of_call":
             return "Summarize the main topic of scheduling an appointment with the doctor from the transcript"
@@ -96,12 +107,12 @@ def convert_appointments_to_natural_language(raw_input: str) -> dict:
 
 
 # Main openai prompt 
-def data_extraction (text: str, type: str):
-    base_prompt = openAIPrompts(type)
+async def data_extraction (text: str, v_type: str):
+    base_prompt = openAIPrompts(v_type)
     final_prompt = f"{base_prompt}\n\nTranscript: {text}"
     response = openai_client.chat_response(final_prompt)
     print(f"open ai response: {response}")
-    return validate_regex(response, type)
+    return await validate_regex(response, v_type)
 
 
 
@@ -109,7 +120,6 @@ def data_extraction (text: str, type: str):
 def next_prompt_type(current_state):
     match current_state:
         case "name":
-            print("returning insurance payer")
             return "insurance_payer"
         case "insurance_payer":
             return "insurance_id"
@@ -128,7 +138,7 @@ def next_prompt_type(current_state):
 
 
 
-def handle_appointment_scheduling(text):
+async def handle_appointment_scheduling(text):
     prompt = f"""
     Extract the scheduling information from the patient's message.
 
@@ -161,7 +171,7 @@ def handle_appointment_scheduling(text):
                 f"these missing fields: {json_response['missing_fields']}"
             )
 
-        is_valid_time, error_message = validate_appointment_time(json_response)
+        is_valid_time, error_message = await validate_appointment_time(json_response)
         print(f"++++After: {error_message}")
         if not is_valid_time:
             return None, False, error_message
@@ -175,3 +185,25 @@ def handle_appointment_scheduling(text):
 
 
 
+
+
+async def infer_address_with_llm(raw_address: str) -> str:
+    """
+    Uses OpenAI to infer the correct structured address from raw user input.
+    """
+    prompt = f"""
+    You are an AI address normalizer. Your job is to take in a potentially incomplete or misspoken address and return the most likely full and correctly spelled address as a single line (like "123 Main Street, San Francisco, CA 94105").
+
+    Based on your knowledge of common U.S. addresses and city/street formats, correct any typos and reorder parts as needed.
+
+    Raw input: "{raw_address}"
+
+    Respond ONLY with the inferred fixed address.
+    """
+
+    response = await openai.ChatCompletion.acreate(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt.strip()}],
+    )
+    
+    return response.choices[0].message.content.strip()

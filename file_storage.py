@@ -112,7 +112,7 @@ def get_doctors_appointments_by_day_and_doctor(input:dict):
     with open(filename, "r") as f:
         return json.load(f) 
 
-def add_doctors_appointment(data: dict, patient_name: str, reason: str):
+async def add_doctors_appointment(data: dict, patient_name: str, reason: str):
     print(f"add_doctors_appointment: {data}")
 
     doctor_name = data["doctor_name"]
