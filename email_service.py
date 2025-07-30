@@ -5,12 +5,12 @@ from sendgrid.helpers.mail import Mail
 
 
 def send_confirmation_email_html(session_state:dict):
-    print(session_state["appointments"])
-    start_dt = datetime.fromisoformat(session_state["appointments"]["start"])
-    end_dt = datetime.fromisoformat(session_state["appointments"]["end"])
+    print(session_state['appointments'])
+    start_dt = datetime.fromisoformat(session_state['appointments']['start'])
+    end_dt = datetime.fromisoformat(session_state['appointments']['end'])
     formatted_start_time = start_dt.strftime("%B %d, %Y at %I:%M %p")
     formatted_end_time = end_dt.strftime("%B %d, %Y at %I:%M %p")
-    latest_appointment_scheduled =session_state["appointments"]
+    latest_appointment_scheduled =session_state['appointments']
     html_content = f"""
                         <html>
                         <head>
@@ -50,8 +50,8 @@ def send_confirmation_email_html(session_state:dict):
                             <div class="container">
                             <h2 class="header">Appointment Confirmed</h2>
                             <p class="details">
-                                Hi {session_state["name"]["first_name"].capitalize()} {session_state["name"]["last_name"].capitalize()},<br><br>
-                                This is a quick note to confirm your upcoming appointment with Dr. {latest_appointment_scheduled["doctor_name"].capitalize()}:
+                                Hi {session_state['name']['first_name'].capitalize()} {session_state['name']['last_name'].capitalize()},<br><br>
+                                This is a quick note to confirm your upcoming appointment with Dr. {latest_appointment_scheduled['doctor_name'].capitalize()}:
                             </p>
                             <p class="details">
                                 <strong>📅 Time:</strong> {formatted_start_time} until {formatted_end_time} <br>
@@ -71,7 +71,7 @@ def send_confirmation_email_html(session_state:dict):
     message = Mail(
         from_email='racheltaskale@gmail.com',
         to_emails=session_state["email"],
-        subject=f"Your Appointment with Dr. {latest_appointment_scheduled["doctor_name"].capitalize()} is Confirmed!",
+        subject=f"Your Appointment with Dr. {latest_appointment_scheduled['doctor_name'].capitalize()} is Confirmed!",
         html_content=html_content
     )
 

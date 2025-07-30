@@ -16,7 +16,9 @@ class AssemblyAIClient:
     def set_callback(self, callback):
         self.transcript_callback = callback
 
-    async def connect(self):
+    async def connect(self, on_transcript):
+        self.on_transcript = on_transcript
+
         self.ws = await websockets.connect(
             self.uri,
             additional_headers={"Authorization": self.api_key},
@@ -26,6 +28,7 @@ class AssemblyAIClient:
         asyncio.create_task(self._receive_loop())
 
     async def send_audio(self, audio_chunk):
+        print("made it to send audio")
         if self.ws:
             payload = json.dumps({
                 "audio_data": base64.b64encode(audio_chunk).decode("utf-8")
@@ -45,3 +48,6 @@ class AssemblyAIClient:
             await self.ws.send(json.dumps({"terminate_session": True}))
             await self.ws.close()
             self.ws = None
+    
+
+ 
