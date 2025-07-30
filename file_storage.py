@@ -38,39 +38,39 @@ DOCTORS_APPOINTMENTS_FILE = os.path.join("data", "doctors_appointments.json")
 def write_patient_record(data: dict):
     print("write_patient_record")
     key = f"{data['name']['last_name']}#{data['name']['first_name']}"
-    new_appointment = data["appointments"]
+    new_appointment = data['appointments']
 
     new_value = {
-        "insurance_payer": data["insurance_payer"],
-        "insurance_id": data["insurance_id"],
-        "topic_of_call": data["topic_of_call"],
-        "phone": data["phone"],
-        "email": data["email"],
-        "last_name": data['name']["last_name"],
-        "first_name": data['name']["first_name"],
-        "appointments": [new_appointment]
+        'insurance_payer': data['insurance_payer'],
+        'insurance_id': data['insurance_id'],
+        'topic_of_call': data['topic_of_call'],
+        'phone': data['phone'],
+        'email': data['email'],
+        'last_name': data['name']['last_name'],
+        'first_name': data['name']['first_name'],
+        'appointments': [new_appointment]
     }
 
     # Load existing records or initialize
     if os.path.exists(PATIENT_RECORDS_FILE):
-        with open(PATIENT_RECORDS_FILE, "r") as f:
+        with open(PATIENT_RECORDS_FILE, 'r') as f:
             try:
                 records = json.load(f)
             except json.JSONDecodeError:
-                print("Warning: Corrupt JSON file, reinitializing.")
+                print('Warning: Corrupt JSON file, reinitializing.')
                 records = {}
     else:
         records = {}
 
     if key in records:
         patient = records[key]
-        for field in ["insurance_payer", "insurance_id", "topic_of_call", "phone", "email"]:
+        for field in ['insurance_payer', 'insurance_id', 'topic_of_call', 'phone', 'email']:
             patient[field] = new_value[field]
 
         # Avoid duplicate appointments
-        if new_appointment not in patient.get("appointments", []):
-            patient["appointments"].append(new_appointment)
-        print(f"Updated patient record for {key}")
+        if new_appointment not in patient.get('appointments', []):
+            patient['appointments'].append(new_appointment)
+        print(f'Updated patient record for {key}')
     else:
         records[key] = new_value
         print(f"Created new patient record for {key}")
