@@ -80,19 +80,6 @@ def openAIPrompts(type):
     return None
 
 
-
-# def openai_prompt_handler(prompt: str, system_prompt: str = "You are a helpful and accurate medical secretary with expertise in health insurance."):
-#     response = client.chat.completions.create(
-#         model="gpt-4",
-#         messages=[
-#             {"role": "system", "content": system_prompt},
-#             {"role": "user", "content": prompt}
-#         ]
-#     )
-#     return response.choices[0].message.content.strip()
-
-
-
 def convert_appointments_to_natural_language(raw_input: str) -> dict:
     prompt = f"""
     Communicate all open time slots to schedule appointments to your patient based on the 
@@ -113,7 +100,7 @@ def data_extraction (text: str, type: str):
     base_prompt = openAIPrompts(type)
     final_prompt = f"{base_prompt}\n\nTranscript: {text}"
     response = openai_client.chat_response(final_prompt)
-    # One more round of validation on our regex to confirm the output from OpenAI was correct
+    print(f"open ai response: {response}")
     return validate_regex(response, type)
 
 
@@ -122,6 +109,7 @@ def data_extraction (text: str, type: str):
 def next_prompt_type(current_state):
     match current_state:
         case "name":
+            print("returning insurance payer")
             return "insurance_payer"
         case "insurance_payer":
             return "insurance_id"
@@ -185,63 +173,5 @@ def handle_appointment_scheduling(text):
     except Exception as e:
         return None, False, f"OpenAI error: {e}"
 
-# function to write create audio file in static
-def synthesize_speech(text: str, voice: str = "nova", output_dir: str = AUDIO_OUTPUT_DIR) -> str:
-    print(f"[TTS] Text input: {repr(text)}")  # <-- See what's being passed
-    if not isinstance(text, str) or not text.strip():
-        raise ValueError("synthesize_speech: 'text' must be a non-empty string")
-
-    response = openai.audio.speech.create(
-        model="tts-1",
-        voice=voice,
-        input=text,
-    )
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    filename = f"{uuid.uuid4()}.mp3"
-    file_path = os.path.join(output_dir, filename)
-
-    with open(file_path, "wb") as f:
-        f.write(response.content)
-
-    return file_path
 
 
-
-
-def convert_to_ulaw(input_path: str, output_dir: str = "audio_files") -> str:
-    """
-    Converts an audio file to 8kHz, mono, mulaw format for Twilio WebSocket playback.
-    
-    Args:
-        input_path: Path to the source audio file (.mp3, .wav, etc.)
-        output_dir: Directory to save the .ulaw file
-
-    Returns:
-        Path to the generated .ulaw file
-    """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    base_name = os.path.splitext(os.path.basename(input_path))[0]
-    output_path = os.path.join(output_dir, f"{base_name}.ulaw")
-
-    command = [
-        "ffmpeg",
-        "-y",                 # Overwrite output file if it exists
-        "-i", input_path,     # Input file
-        "-ar", "8000",        # Sample rate
-        "-ac", "1",           # Mono
-        "-f", "mulaw",        # Format: mulaw
-        output_path
-    ]
-
-    try:
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"Converted: {input_path} -> {output_path}")
-        return output_path
-    except subprocess.CalledProcessError as e:
-        print(f"Conversion failed for {input_path}: {e}")
-        return ""

@@ -35,7 +35,10 @@ def validate_regex(text: str, type: str):
             found = re.search(DOB_REGEX, text)
             if not found:
                 return "", False, "Invalid date of birth format. Use YYYY-MM-DD"
+        case "name":
+            return text, True, ""
         case _:
+        
             return "", False, f"Unknown validation type: {type}"
 
     return found.group(), True, ""
